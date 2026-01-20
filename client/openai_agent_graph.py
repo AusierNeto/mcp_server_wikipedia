@@ -32,5 +32,19 @@ async def create_graph(session):
     chat_llm = prompt_template | llm_with_tools
 
     def chat_node(state: State) -> State:
-        pass
+        state["messages"] = chat_llm.invoke({"messages": state["messages"]})
+        return state
+    
+    # Build langgraph with tool routing
+    graph = StateGraph(State)
+    graph.add_node("chat_node", chat_node)
+    graph.add_node("tool_node", ToolNode(tools))
+    graph.add_edge(START, "chat_node")
+    graph.add_conditional_edges("chat_node", tools_condition, {
+        "tools": "tool_node",
+        "__end__": END
+    })
+    graph.add_node("tool_node", "chat_node")
+
+    return graph.compile(checkpointer=MemorySaver())
 

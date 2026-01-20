@@ -7,7 +7,7 @@ from client.openai_agent_graph import create_graph
 
 # MCP Client can start the server
 server_params = StdioServerParameters(
-    command=["python"],
+    command="python",
     args=["mcp_server.py"]
 )
 

@@ -44,7 +44,7 @@ async def create_graph(session):
         "tools": "tool_node",
         "__end__": END
     })
-    graph.add_node("tool_node", "chat_node")
+    graph.add_edge("tool_node", "chat_node")
 
     return graph.compile(checkpointer=MemorySaver())
 

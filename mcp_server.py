@@ -1,5 +1,7 @@
 import wikipedia
+
 from mcp.server.fastmcp import FastMCP
+
 
 mcp = FastMCP("WikipediaSearch")
 
@@ -11,7 +13,7 @@ def fetch_wikipedia_info(query:str) -> dict:
     
     :param query: Description
     :type query: str
-    :return: Description
+    :return: Description    
     :rtype: dict
     """
     try:

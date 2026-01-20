@@ -1,4 +1,5 @@
 import asyncio
+import pip_system_certs.wrapt_requests
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -24,6 +25,7 @@ async def main():
                 if user_input.lower() in {"exit", "quit", "q"}:
                     break
 
+                print(user_input)
                 try:
                     response = await agent.ainvoke(
                         {"messages": user_input},

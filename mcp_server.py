@@ -23,6 +23,10 @@ def fetch_wikipedia_info(query:str) -> dict:
             return {"error": "No results found for your query"}
         
         first_result = search_results[0]
+
+        if first_result is str:
+            return {"message": first_result}
+
         wiki_page = first_result.page
 
         return {

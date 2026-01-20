@@ -32,8 +32,8 @@ async def create_graph(session):
     chat_llm = prompt_template | llm_with_tools
 
     def chat_node(state: State) -> State:
-        state["messages"] = chat_llm.invoke({"messages": state["messages"]})
-        return state
+        response = chat_llm.invoke({"messages": state["messages"]})
+        return {"messages": [response]}
     
     # Build langgraph with tool routing
     graph = StateGraph(State)

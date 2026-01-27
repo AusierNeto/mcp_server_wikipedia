@@ -24,16 +24,15 @@ def fetch_wikipedia_info(query:str) -> dict:
         
         first_result = search_results[0]
 
-        if first_result is str:
-            return {"message": first_result}
+        return {"info": first_result}
 
-        wiki_page = first_result.page
+        # wiki_page = first_result.page
 
-        return {
-            "title": wiki_page.title,
-            "summary": wiki_page.summary,
-            "url": wiki_page.url
-        }
+        # return {
+        #     "title": wiki_page.title,
+        #     "summary": wiki_page.summary,
+        #     "url": wiki_page.url
+        # }
     except wikipedia.DisambiguationError as e:
         return {"error": f"Ambiguous Topic. Try one of these {', '.join(e.options[:5])}"}
     except wikipedia.PageError as e:

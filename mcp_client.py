@@ -1,4 +1,6 @@
+import os
 import asyncio
+
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -6,21 +8,19 @@ from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import AnyMessage, add_messages
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import tools_condition, ToolNode
-from typing import Annotated, List
-from typing_extensions import TypedDict
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-
 from langchain_mcp_adapters.tools import load_mcp_tools
 
-import os
+from typing import Annotated, List
+from typing_extensions import TypedDict
+
 from dotenv import load_dotenv
 
 load_dotenv()
 api_key = os.getenv('API_KEY')
 
-# MCP server launch config
 server_params = StdioServerParameters(
     command="python",
     args=["mcp_server.py"]
@@ -31,7 +31,7 @@ class State(TypedDict):
     messages: Annotated[List[AnyMessage], add_messages]
 
 
-async def create_graph(session):
+async def create_graph(session: ClientSession) -> StateGraph:
     # Load tools from MCP server
     tools = await load_mcp_tools(session)
 
@@ -66,6 +66,25 @@ async def create_graph(session):
     return graph.compile(checkpointer=MemorySaver())
 
 
+async def list_prompts(session: ClientSession):
+    prompt_list = await session.list_prompts()
+
+    if not prompt_list:
+        print("No prompts found on the MCP server.")
+        return
+    
+    print("Available Prompts and arguments structure:")
+    for prompt in prompt_list:
+        print(f"- Prompt Name: {prompt.name}")
+        if prompt.args:
+            for arg in prompt.args:
+                print(f"  - Arg: {arg.name}")
+        else:
+            print("  - No arguments")
+
+    print("\nUse: /prompt <prompt_name> \"arg1\", \"arg2\", ... to invoke a prompt.")
+
+
 # Entry point
 async def main():
     async with stdio_client(server_params) as (read, write):
@@ -80,7 +99,6 @@ async def main():
                 if user_input.lower() in {"exit", "quit", "q"}:
                     break
 
-                print(user_input)
                 try:
                     response = await agent.ainvoke(
                         {"messages": user_input},

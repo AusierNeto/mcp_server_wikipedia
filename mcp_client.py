@@ -1,5 +1,6 @@
 import os
 import asyncio
+import shlex
 
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -11,12 +12,16 @@ from langgraph.prebuilt import tools_condition, ToolNode
 
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage
 from langchain_mcp_adapters.tools import load_mcp_tools
 
 from typing import Annotated, List
 from typing_extensions import TypedDict
-
 from dotenv import load_dotenv
+
+
+class State(TypedDict):
+    messages: Annotated[List[AnyMessage], add_messages]
 
 load_dotenv()
 api_key = os.getenv('API_KEY')
@@ -26,9 +31,44 @@ server_params = StdioServerParameters(
     args=["mcp_server.py"]
 )
 
-# LangGraph state definition
-class State(TypedDict):
-    messages: Annotated[List[AnyMessage], add_messages]
+async def handle_prompt(session, tools, command, agent):
+    parts = shlex.split(command.strip())
+    if len(parts) < 2:
+        print("Usage: /prompt <name> \"args>\"")
+        return
+
+    prompt_name = parts[1]
+    args = parts[2:]
+
+    try:
+        # Get available prompts
+        prompt_def = await session.list_prompts()
+        match = next((p for p in prompt_def.prompts if p.name == prompt_name), None)
+        if not match:
+            print(f"Prompt '{prompt_name}' not found.")
+            return
+
+        # Check arg count
+        if len(args) != len(match.arguments):
+            expected = ", ".join([a.name for a in match.arguments])
+            print(f"Expected {len(match.arguments)} arguments: {expected}")
+            return
+
+        # Build argument dict
+        arg_values = {arg.name: val for arg, val in zip(match.arguments, args)}
+        response = await session.get_prompt(prompt_name, arg_values)
+        prompt_text = response.messages[0].content.text
+        
+        # Execute the prompt via the agent
+        agent_response = await agent.ainvoke(
+            {"messages": [HumanMessage(content=prompt_text)]},
+            config={"configurable": {"thread_id": "wiki-session"}}
+        )
+        print("\n=== Prompt Result ===")
+        print(agent_response["messages"][-1].content)
+
+    except Exception as e:
+        print("Prompt invocation failed:", e)
 
 
 async def create_graph(session: ClientSession) -> StateGraph:
@@ -90,14 +130,24 @@ async def main():
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
-
+            tools = await load_mcp_tools(session)
             agent = await create_graph(session)
+
             print("Wikipedia MCP agent is ready.")
+            print("Type a question or use the following templates:")
+            print("  /prompts                - to list available prompts")
+            print("  /prompt <name> \"args\"   - to run a specific prompt")
 
             while True:
                 user_input = input("\nYou: ").strip()
                 if user_input.lower() in {"exit", "quit", "q"}:
                     break
+                elif user_input.startswith("/prompts"):
+                    await list_prompts(session)
+                    continue
+                elif user_input.startswith("/prompt"):
+                    await handle_prompt(session, tools, user_input, agent)
+                    continue
 
                 try:
                     response = await agent.ainvoke(

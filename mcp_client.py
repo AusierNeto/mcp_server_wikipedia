@@ -31,46 +31,6 @@ server_params = StdioServerParameters(
     args=["mcp_server.py"]
 )
 
-async def handle_prompt(session, tools, command, agent):
-    parts = shlex.split(command.strip())
-    if len(parts) < 2:
-        print("Usage: /prompt <name> \"args>\"")
-        return
-
-    prompt_name = parts[1]
-    args = parts[2:]
-
-    try:
-        # Get available prompts
-        prompt_def = await session.list_prompts()
-        match = next((p for p in prompt_def.prompts if p.name == prompt_name), None)
-        if not match:
-            print(f"Prompt '{prompt_name}' not found.")
-            return
-
-        # Check arg count
-        if len(args) != len(match.arguments):
-            expected = ", ".join([a.name for a in match.arguments])
-            print(f"Expected {len(match.arguments)} arguments: {expected}")
-            return
-
-        # Build argument dict
-        arg_values = {arg.name: val for arg, val in zip(match.arguments, args)}
-        response = await session.get_prompt(prompt_name, arg_values)
-        prompt_text = response.messages[0].content.text
-        
-        # Execute the prompt via the agent
-        agent_response = await agent.ainvoke(
-            {"messages": [HumanMessage(content=prompt_text)]},
-            config={"configurable": {"thread_id": "wiki-session"}}
-        )
-        print("\n=== Prompt Result ===")
-        print(agent_response["messages"][-1].content)
-
-    except Exception as e:
-        print("Prompt invocation failed:", e)
-
-
 async def create_graph(session: ClientSession) -> StateGraph:
     # Load tools from MCP server
     tools = await load_mcp_tools(session)
@@ -125,7 +85,95 @@ async def list_prompts(session: ClientSession):
     print("\nUse: /prompt <prompt_name> \"arg1\", \"arg2\", ... to invoke a prompt.")
 
 
-# Entry point
+async def handle_prompt(session, tools, command, agent):
+    parts = shlex.split(command.strip())
+    if len(parts) < 2:
+        print("Usage: /prompt <name> \"args>\"")
+        return
+
+    prompt_name = parts[1]
+    args = parts[2:]
+
+    try:
+        # Get available prompts
+        prompt_def = await session.list_prompts()
+        match = next((p for p in prompt_def.prompts if p.name == prompt_name), None)
+        if not match:
+            print(f"Prompt '{prompt_name}' not found.")
+            return
+
+        # Check arg count
+        if len(args) != len(match.arguments):
+            expected = ", ".join([a.name for a in match.arguments])
+            print(f"Expected {len(match.arguments)} arguments: {expected}")
+            return
+
+        # Build argument dict
+        arg_values = {arg.name: val for arg, val in zip(match.arguments, args)}
+        response = await session.get_prompt(prompt_name, arg_values)
+        prompt_text = response.messages[0].content.text
+        
+        # Execute the prompt via the agent
+        agent_response = await agent.ainvoke(
+            {"messages": [HumanMessage(content=prompt_text)]},
+            config={"configurable": {"thread_id": "wiki-session"}}
+        )
+        print("\n=== Prompt Result ===")
+        print(agent_response["messages"][-1].content)
+
+    except Exception as e:
+        print("Prompt invocation failed:", e)
+
+
+async def list_resources(session):
+    try:
+        response = await session.list_resources()
+        if not response or not response.resources:
+            print("No resources found on the server.")
+            return
+
+        print("\nAvailable Resources:")
+        for i, r in enumerate(response.resources, 1):
+            print(f"[{i}] {r.name}")
+        print("\nUse: /resource <name> to view its content.")
+    except Exception as e:
+        print("Failed to list resources:", e)
+
+
+async def handle_resource(session, command):
+    parts = shlex.split(command.strip())
+    if len(parts) < 2:
+        print("Usage: /resource <name>")
+        return
+
+    resource_id = parts[1]
+
+    try:
+        # Get all available resources
+        response = await session.list_resources()
+        resources = response.resources
+        resource_map = {str(i + 1): r.name for i, r in enumerate(resources)}
+
+        # Resolve name or index
+        resource_name = resource_map.get(resource_id, resource_id)
+        match = next((r for r in resources if r.name == resource_name), None)
+
+        if not match:
+            print(f"Resource '{resource_id}' not found.")
+            return
+
+        # Fetch resource content
+        result = await session.read_resource(match.uri)
+
+        for content in result.contents:
+            if hasattr(content, "text"):
+                print("\n=== Resource Text ===")
+                print(content.text)
+
+    except Exception as e:
+        print("Resource fetch failed:", e)
+
+
 async def main():
     async with stdio_client(server_params) as (read, write):
         async with ClientSession(read, write) as session:
@@ -136,7 +184,9 @@ async def main():
             print("Wikipedia MCP agent is ready.")
             print("Type a question or use the following templates:")
             print("  /prompts                - to list available prompts")
-            print("  /prompt <name> \"args\"   - to run a specific prompt")
+            print("  /prompt <name> \"args\".  - to run a specific prompt")
+            print("  /resources              - to list available resources")
+            print("  /resource <name>        - to run a specific resource")
 
             while True:
                 user_input = input("\nYou: ").strip()
@@ -147,6 +197,12 @@ async def main():
                     continue
                 elif user_input.startswith("/prompt"):
                     await handle_prompt(session, tools, user_input, agent)
+                    continue
+                elif user_input.startswith("/resources"):
+                    await list_resources(session)
+                    continue
+                elif user_input.startswith("/resource"):
+                    await handle_resource(session, user_input)
                     continue
 
                 try:
